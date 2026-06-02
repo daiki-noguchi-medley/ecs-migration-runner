@@ -265,6 +265,13 @@ make reset     # 完全初期化 (data volume も削除)
 | `make spotless-check` | SQL フォーマット検証（ローカル Gradle） |
 | `make spotless-fix` | SQL 自動フォーマット（ローカル Gradle） |
 
+#### 既存 DB 統合 🆕
+| ターゲット | 内容 |
+|---|---|
+| `make baseline-init` | 既存 DB を Baseline で初期化（特定バージョンをスキップ） |
+| `make dump-schema` | 既存テーブル定義を SQL ファイルに自動抽出 |
+| `make repair` | Flyway checksum エラーを修復（最後の手段） |
+
 #### モード B: Dev Container
 | ターゲット | 内容 |
 |---|---|
@@ -325,6 +332,17 @@ sequenceDiagram
 | 起動 | `make up` | `gh workflow run migrate.yml --ref v0.x.0` |
 | port 公開 | `localhost:5432` (psql 直接接続可) | 非公開 (VPC 内のみ) |
 | クリーンアップ | `make reset` で data volume 削除 | `bash infra/teardown.sh` で CFN ごと削除 |
+
+## ドキュメント
+
+| ファイル | 内容 |
+|---------|------|
+| [docs/architecture.md](docs/architecture.md) | アーキテクチャ図（ASCII + Mermaid） |
+| [docs/development-guide.md](docs/development-guide.md) | 開発ガイド・Makefile 一覧 |
+| [docs/prd.md](docs/prd.md) | Product Requirements Document |
+| [docs/repository-structure.md](docs/repository-structure.md) | リポジトリ構成詳細 |
+| [docs/windows-setup.md](docs/windows-setup.md) | **Windows セットアップガイド** |
+| [docs/existing-db-setup.md](docs/existing-db-setup.md) | **既存 DB への Flyway 統合ガイド** 🆕 |
 
 ## ディレクトリ構成
 
