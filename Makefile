@@ -157,6 +157,7 @@ ifeq ($(shell command -v gradle 2>/dev/null),)
 	@echo "WARNING: Gradle not installed locally."
 	@echo "   For Dev Container: make gradle-check"
 	@echo "   Using docker-compose..."
+	@docker compose -f $(COMPOSE_FILE) down 2>/dev/null || true
 	docker compose -f $(DEVCONTAINER_COMPOSE) run --rm gradle gradle spotlessCheck
 else
 	gradle spotlessCheck
@@ -167,6 +168,7 @@ ifeq ($(shell command -v gradle 2>/dev/null),)
 	@echo "WARNING: Gradle not installed locally."
 	@echo "   For Dev Container: make gradle-fix"
 	@echo "   Using docker-compose..."
+	@docker compose -f $(COMPOSE_FILE) down 2>/dev/null || true
 	docker compose -f $(DEVCONTAINER_COMPOSE) run --rm gradle gradle spotlessApply
 else
 	gradle spotlessApply
