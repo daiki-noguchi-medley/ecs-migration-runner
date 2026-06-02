@@ -66,6 +66,53 @@ sequenceDiagram
 
 GitHub Actions は **インフラを作らない**。`describe-stacks` 等で CFN を読まないので、CFN 構成が変わっても workflow は影響を受けない（GitHub Variables を更新するだけで追従）。
 
+## 運用フロー
+
+### SQL 開発 → PR → マージ → 本番デプロイ
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Dev as 開発者
+    participant Local as ローカル<br/>(Dev Container)
+    participant GH as GitHub
+    participant GHA as GitHub Actions
+    participant ECR as Amazon ECR
+    participant ECS as ECS Fargate
+    participant RDS as RDS PostgreSQL
+
+    Note over Dev,Local: ① SQL を開発
+    Dev->>Local: make up (ローカル DB 起動)
+    Dev->>Local: migrations/sql/V3__... を追加
+    Dev->>Local: make gradle-fix (Spotless 自動フォーマット)
+    Dev->>Local: make validate (Flyway 検証)
+
+    Note over Dev,GH: ② PR をマージ
+    Dev->>GH: git push & gh pr create
+    GHA->>GHA: lint.yml (Spotless check)
+    GHA-->>GH: ✅ Check passed
+    Dev->>GH: PR merge --squash
+
+    Note over GH,GHA: ③ auto-format.yml が自動実行
+    GH->>GHA: push to main event
+    GHA->>GHA: spotlessApply (Spotless 自動修正)
+    GHA->>GHA: git commit & push (修正を自動コミット)
+    GHA-->>GH: ✅ Auto-format applied
+
+    Note over GH,GHA: ④ create_git_tag.yml が自動実行
+    GHA->>GHA: git tag v0.x.0 を自動作成
+    GHA-->>GH: ✅ Tag created
+
+    Note over Dev,RDS: ⑤ マイグレーション実行
+    Dev->>GHA: workflow_dispatch (migrate.yml)
+    GHA->>ECR: docker build & push
+    GHA->>ECS: run-task
+    ECS->>RDS: Flyway migrate
+    RDS-->>ECS: ✅ Success
+```
+
+---
+
 ## クイックスタート
 
 ### 1. インフラをデプロイ (初回 or 構成変更時のみ、手動)
@@ -365,28 +412,123 @@ sequenceDiagram
 
 Spotless を使用して、SQL ファイルのフォーマットを統一・検証します。
 
+### ローカル開発
+
 ```bash
-# ローカルでチェック
+# SQL フォーマット検証
 make spotless-check
 
 # 自動修正
 make spotless-fix
 ```
 
-**ルール**:
+**フォーマット規則**:
 - インデント: タブ (2 スペース相当)
 - フォーマッター: DBeaver SQL フォーマッター
 - 末尾: 改行で終了
 
-PR 時に GitHub Actions (`lint.yml`) が自動実行され、フォーマット違反があるとコメントされます。
+### GitHub Actions での自動化
+
+**2 つのワークフロー**が動作：
+
+#### 1. `lint.yml` - PR 時のフォーマット検証
+```yaml
+on: pull_request
+jobs:
+  spotless-check:  # Spotless チェック実行
+                   # 違反があれば PR コメント
+```
+
+**タイミング**: PR 作成時 / SQL ファイル追加時  
+**結果**: チェック成功なら merge OK
+
+#### 2. `auto-format.yml` - main merge 後の自動修正 🆕
+```yaml
+on: push main
+jobs:
+  spotless-apply:  # Spotless 自動修正
+  auto-commit:     # 修正結果を main に自動コミット
+```
+
+**タイミング**: PR が main にマージされた直後  
+**結果**: Spotless が自動で SQL を修正 → 修正結果を main に commit
+
+### 開発フロー例
+
+```bash
+# ① ローカルで SQL を追加（未フォーマット）
+cat > migrations/sql/V3__add_post.sql <<'SQL'
+create table post (
+id uuid, user_id uuid, body text
+)
+SQL
+
+# ② PR を作成
+git add migrations/sql/V3__add_post.sql
+git commit -m "feat: add post table"
+git push -u origin feature/add-post
+gh pr create
+
+# ③ lint.yml が自動実行
+#    → Spotless チェック
+#    → 違反があれば PR に コメント
+
+# ④ main にマージ
+gh pr merge --squash
+
+# ⑤ auto-format.yml が自動実行
+#    → Spotless で自動フォーマット
+#    → [skip ci] 自動コミットで main に push
+#    → Spotless チェックをパス
+
+# ⑥ create_git_tag.yml が自動実行
+#    → v0.x.0 タグを自動作成
+```
+
+---
+
+### Spotless を手動で実行する必要はない
+
+PR merge 後、Spotless 違反があれば GitHub Actions が自動修正 → 自動コミットします。開発者は以下の流れだけ：
+
+1. SQL を追加（フォーマット不要）
+2. PR を作成
+3. main にマージ
+4. 自動で Spotless 適用 ✨
+5. v0.x.0 タグが自動作成
 
 ## マイグレーション運用ルール
 
+### ファイル管理
 - **V<n>__<name>.sql の連番ファイル**を追加する
 - **既存ファイルの編集は禁止** (Flyway の checksum と不一致になる)
 - ロールバックは「打ち消し migration を追加」で行う (OSS Flyway は undo 非対応)
-- テーブル名は **単数形** (`user`, `post`)、複数件を表すコードは `~List` サフィックス (CLAUDE.md 規約)
-- **SQL フォーマット**: `make spotless-fix` で統一（PR 前に実行推奨）
+
+### ネーミング規約
+- テーブル名は **単数形** (`user`, `post`)
+- 複数件を表すコードは `~List` サフィックス (CLAUDE.md 規約)
+- migration ファイル名: `V<number>__<short_description>.sql`
+  - 例: `V1__init.sql`, `V2__add_user.sql`, `V3__add_post_table.sql`
+
+### SQL フォーマット
+- **ローカル**: `make spotless-fix` で修正（PR 前に実行）
+- **GitHub Actions**: PR merge 後に自動で `spotless apply` を実行
+- 無駄なフォーマット修正 PR は不要 ✨
+
+### PR / merge フロー
+```
+1. feature ブランチで SQL を追加
+   ↓
+2. PR を作成 → lint.yml が自動実行（Spotless check）
+   ↓
+3. main にマージ
+   ↓
+4. auto-format.yml が自動実行 → Spotless apply
+   ↓
+5. 修正結果が自動コミット（[skip ci]）
+   ↓
+6. create_git_tag.yml が自動実行 → v0.x.0 タグ作成
+```
 
 ## トラブルシュート
 
@@ -405,6 +547,34 @@ PR 時に GitHub Actions (`lint.yml`) が自動実行され、フォーマット
 - [Flyway 入門 (tech-lab.sios.jp)](https://tech-lab.sios.jp/archives/35525) — Flyway の SQL バージョン管理規約
 - AWS 公式: [Running an application as an Amazon ECS task](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/standalone-task-create.html)
 - GitHub 公式: [Configuring OpenID Connect in Amazon Web Services](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services)
+
+## トラブルシューティング
+
+### ローカル開発
+| 症状 | 確認ポイント |
+|------|------------|
+| `make up` が失敗 | `docker compose ps` でコンテナ状態確認 / `make reset` で初期化 |
+| `make spotless-check` が失敗 | `make spotless-fix` で自動修正 / Dev Container 内なら `make gradle-fix` |
+| DB に接続できない | `make psql` の前に `make up` で起動 / port 5432 が競合していないか確認 |
+| Dev Container が起動しない | `docker compose -f .devcontainer/docker-compose.yml down -v` でリセット |
+
+### GitHub Actions
+| 症状 | 確認ポイント |
+|------|------------|
+| `lint.yml` が失敗 | PR に Spotless 違反コメント表示 → `make spotless-fix` でローカル修正 |
+| `auto-format.yml` が実行されない | main へのマージ後、SQL ファイル変更を含むか確認 |
+| `auto-format.yml` で無限ループ | `[skip ci]` が自動コミットに付与されているか確認 |
+| `create_git_tag.yml` が失敗 | Conventional Commits に従っているか確認（feat: / fix: / chore: など） |
+
+### 本番デプロイ
+| 症状 | 確認ポイント |
+|------|------------|
+| Actions が `AccessDenied` で落ちる | `AWS_ROLE_ARN` 設定 / OIDC 信頼ポリシーの確認 |
+| Flyway が DB に繋がらない | RDS SG の inbound 5432 / private subnet のルートテーブル確認 |
+| ECR push が遅い | NAT 経由の場合は数十秒要する / VPC エンドポイント活用も検討 |
+| checksum 不一致 | 既存 SQL を編集した可能性。`make repair` で修復（新規 migration 推奨） |
+
+---
 
 ## ライセンス
 
