@@ -1,0 +1,199 @@
+# RDS PostgreSQL に対する Flyway マイグレーションを ECS Fargate one-shot で実行する
+#
+# 責務: ECR push + ECS run-task + 結果確認 のみ
+#        インフラ (VPC / RDS / ECS Cluster / Task Definition / ECR Repository / IAM)
+#        は別途 CloudFormation で手動構築する想定 (infra/*.cfn.yaml)
+#
+# 起動方法: workflow_dispatch (GitHub UI の "Run workflow" / gh CLI)
+#   - GitHub UI の "Use workflow from" で適用したい **タグ** または branch を選ぶ
+#   - 例: 「Use workflow from: v0.2.0」 → v0.2.0 時点の migrations/sql/ を適用
+#   - 例: 「Use workflow from: main」  → main HEAD で実行 (緊急対応用)
+#
+#   gh CLI なら:  gh workflow run migrate.yml --ref v0.2.0
+#
+# 認証: GitHub OIDC → IAM Role (AssumeRoleWithWebIdentity)
+#
+# 必要なリポジトリ設定:
+#   Secrets:
+#     - AWS_ROLE_ARN              : GitHubActionsRole の ARN
+#   Variables:
+#     - AWS_REGION                : 例 ap-northeast-1
+#     - ECR_REPOSITORY            : 例 flyway-migration
+#     - ECS_CLUSTER               : 例 migration-runner
+#     - ECS_TASK_FAMILY           : 例 flyway-migration  (TaskDefinition family)
+#     - ECS_SUBNETS               : 例 subnet-aaa,subnet-bbb (カンマ区切り、private subnet)
+#     - ECS_SECURITY_GROUPS       : 例 sg-xxx              (カンマ区切り)
+#     - ECS_LOG_GROUP             : 例 /ecs/flyway-migration
+#     - ECS_LOG_STREAM_PREFIX     : 例 flyway              (タスク定義の awslogs-stream-prefix と一致)
+
+name: migrate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION:            ${{ vars.AWS_REGION }}
+  ECR_REPOSITORY:        ${{ vars.ECR_REPOSITORY }}
+  ECS_CLUSTER:           ${{ vars.ECS_CLUSTER }}
+  ECS_TASK_FAMILY:       ${{ vars.ECS_TASK_FAMILY }}
+  ECS_SUBNETS:           ${{ vars.ECS_SUBNETS }}
+  ECS_SECURITY_GROUPS:   ${{ vars.ECS_SECURITY_GROUPS }}
+  ECS_LOG_GROUP:         ${{ vars.ECS_LOG_GROUP }}
+  ECS_LOG_STREAM_PREFIX: ${{ vars.ECS_LOG_STREAM_PREFIX }}
+
+jobs:
+  migrate:
+    name: Run Flyway migration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout (起動時に選択された ref を使用)
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+        # ref を省略すると github.ref (= "Use workflow from" で選んだ tag/branch) が使われる
+
+      - name: 起動 ref を表示
+        run: |
+          {
+            echo "### Migration を実行する ref"
+            echo ""
+            echo "| 項目 | 値 |"
+            echo "|---|---|"
+            echo "| ref_type | \`${{ github.ref_type }}\` |"
+            echo "| ref_name | \`${{ github.ref_name }}\` |"
+            echo "| sha      | \`${{ github.sha }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "ref_type: ${{ github.ref_type }}"
+          echo "ref_name: ${{ github.ref_name }}"
+          echo "sha:      ${{ github.sha }}"
+
+      - name: ECR image tag を決定
+        id: imgtag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            # tag からの起動 → そのまま使う (例: v0.2.0)
+            IMAGE_TAG="${{ github.ref_name }}"
+            echo "==> tag からの起動: ${IMAGE_TAG}"
+          else
+            # branch からの起動 → <branch>-<short-sha> (例: main-a1b2c3d)
+            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+            SAFE_REF=$(echo "${{ github.ref_name }}" | tr '/_' '--')
+            IMAGE_TAG="${SAFE_REF}-${SHORT_SHA}"
+            echo "==> branch からの起動: ${IMAGE_TAG}"
+          fi
+          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502  # v4.0.2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-migration-${{ github.run_id }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076  # v2.0.1
+
+      - name: Set up Docker Buildx (GHA cache 使用)
+        uses: docker/setup-buildx-action@d70bba72b1f3fd22344832f00baa16ece964efeb  # v3.3.0
+
+      - name: Build & push image (git ref に対応するタグで push)
+        uses: docker/build-push-action@5176d81f87c23d6fc96624dfdbcd9f3830bbe445  # v6.5.0
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.imgtag.outputs.image_tag }}
+          cache-from: type=gha,scope=${{ github.workflow }}
+          cache-to: type=gha,mode=max,scope=${{ github.workflow }}
+
+      - name: Retag :latest to point at the new image
+        # Task Definition の image は ":latest" 固定なので、push したばかりの tag を
+        # ECR put-image で latest にも付け替える (atomic、layer コピー不要)
+        env:
+          IMAGE_TAG: ${{ steps.imgtag.outputs.image_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          MANIFEST=$(aws ecr batch-get-image \
+            --repository-name "${ECR_REPOSITORY}" \
+            --image-ids imageTag="${IMAGE_TAG}" \
+            --query 'images[0].imageManifest' \
+            --output text)
+          aws ecr put-image \
+            --repository-name "${ECR_REPOSITORY}" \
+            --image-tag latest \
+            --image-manifest "${MANIFEST}" \
+            --query 'image.imageId' \
+            --output json
+
+      - name: Run migration task
+        id: run
+        shell: bash
+        run: |
+          set -euo pipefail
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "${ECS_CLUSTER}" \
+            --task-definition "${ECS_TASK_FAMILY}" \
+            --launch-type FARGATE \
+            --count 1 \
+            --network-configuration "awsvpcConfiguration={subnets=[${ECS_SUBNETS}],securityGroups=[${ECS_SECURITY_GROUPS}],assignPublicIp=DISABLED}" \
+            --started-by "gha-${GITHUB_RUN_ID}" \
+            --query 'tasks[0].taskArn' --output text)
+          echo "Started task: ${TASK_ARN}"
+          echo "TASK_ARN=${TASK_ARN}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for task to stop
+        env:
+          TASK_ARN: ${{ steps.run.outputs.TASK_ARN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws ecs wait tasks-stopped --cluster "${ECS_CLUSTER}" --tasks "${TASK_ARN}"
+
+      - name: Fetch logs & determine exit code
+        env:
+          TASK_ARN:  ${{ steps.run.outputs.TASK_ARN }}
+          IMAGE_TAG: ${{ steps.imgtag.outputs.image_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TASK_ID="${TASK_ARN##*/}"
+          STREAM_NAME="${ECS_LOG_STREAM_PREFIX}/flyway/${TASK_ID}"
+
+          DESC=$(aws ecs describe-tasks --cluster "${ECS_CLUSTER}" --tasks "${TASK_ARN}")
+          EXIT_CODE=$(echo "${DESC}"   | jq -r '.tasks[0].containers[0].exitCode // "null"')
+          STOP_REASON=$(echo "${DESC}" | jq -r '.tasks[0].stoppedReason // "n/a"')
+
+          echo "::group::CloudWatch Logs (${ECS_LOG_GROUP} / ${STREAM_NAME})"
+          aws logs get-log-events \
+            --log-group-name   "${ECS_LOG_GROUP}" \
+            --log-stream-name  "${STREAM_NAME}" \
+            --no-start-from-head \
+            --query 'events[].message' --output text || echo "(no log events fetched)"
+          echo "::endgroup::"
+
+          echo "Exit code:   ${EXIT_CODE}"
+          echo "Stop reason: ${STOP_REASON}"
+
+          {
+            echo ""
+            echo "### Migration 結果"
+            echo ""
+            echo "| 項目 | 値 |"
+            echo "|---|---|"
+            echo "| image tag | \`${IMAGE_TAG}\` |"
+            echo "| exit code | \`${EXIT_CODE}\` |"
+            echo "| reason    | \`${STOP_REASON}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${EXIT_CODE}" != "0" ]; then
+            echo "::error::Migration failed (exit=${EXIT_CODE}, reason=${STOP_REASON})"
+            exit 1
+          fi
+          echo "Migration succeeded."

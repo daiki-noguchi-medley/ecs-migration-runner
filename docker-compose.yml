@@ -1,0 +1,61 @@
+# ローカル開発用: PostgreSQL + Flyway を1コマンドで立ち上げる
+#
+# 使い方:
+#   docker compose up -d db                  # DB だけ常駐起動
+#   docker compose run --rm flyway migrate   # マイグレーション適用
+#   docker compose run --rm flyway info      # 適用履歴を表示
+#   docker compose run --rm flyway validate  # SQL の文法チェック
+#   docker compose run --rm flyway clean     # スキーマを全消去 (開発限定)
+#   docker compose down                      # 停止 (data volume は残る)
+#   docker compose down -v                   # data volume も削除 (DB 初期化)
+#
+# 本番 (ECS) との違い:
+#   - SQL は volume mount で読み取り (build 不要、編集即反映)
+#   - port 5432 を localhost に公開 (psql で直接接続できる)
+#   - credentials は ベタ書きの localpass (機密ではない)
+#
+# psql 接続例 (host から):
+#   psql "postgresql://appuser:localpass@localhost:5432/appdb"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ecs-migration-db
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: localpass
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d appdb"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  flyway:
+    image: flyway/flyway:10-alpine
+    container_name: ecs-migration-flyway
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      FLYWAY_URL:               jdbc:postgresql://db:5432/appdb
+      FLYWAY_USER:              appuser
+      FLYWAY_PASSWORD:          localpass
+      FLYWAY_LOCATIONS:         filesystem:/flyway/sql
+      FLYWAY_CONNECT_RETRIES:   "10"
+      # 開発用なので clean を許可する (本番 ECS 側のタスク定義では未設定 = 既定の禁止)
+      FLYWAY_CLEAN_DISABLED:    "false"
+    volumes:
+      # SQL をマウントすることで、ホスト側の編集が即コンテナに反映される (build 不要)
+      - ./migrations/sql:/flyway/sql:ro
+    # デフォルトは migrate。`docker compose run --rm flyway info` 等で上書き可
+    command: migrate
+
+volumes:
+  db-data:
+    name: ecs-migration-db-data

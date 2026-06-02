@@ -1,0 +1,253 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  ECS migration runner - app layer.
+  ECR + ECS Cluster + Task Definition + IAM + GitHub OIDC.
+
+Parameters:
+  NetworkStackName:
+    Type: String
+    Default: migration-network-data
+    Description: network-data スタック名 (Export 参照元)
+  GitHubOrg:
+    Type: String
+    Description: GitHub Organization 名 (例 my-org)
+  GitHubRepo:
+    Type: String
+    Description: GitHub Repository 名 (例 ecs-migration-runner)
+  CreateOIDCProvider:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: アカウントに既に GitHub OIDC Provider があれば false
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+    AllowedValues: [1, 7, 14, 30, 60, 90]
+  TaskCpu:
+    Type: String
+    Default: "256"
+    AllowedValues: ["256", "512", "1024"]
+    Description: Fargate CPU (1024 = 1 vCPU)
+  TaskMemory:
+    Type: String
+    Default: "512"
+    AllowedValues: ["512", "1024", "2048"]
+
+Conditions:
+  ShouldCreateOIDCProvider: !Equals [!Ref CreateOIDCProvider, "true"]
+
+Resources:
+  # ===== ECR =====
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: flyway-migration
+      # スタック削除時に image が残っていても CFN が空にしてから Repository を削除する
+      # (これがないと "RepositoryNotEmptyException" で DELETE_FAILED になる)
+      EmptyOnDelete: true
+      ImageScanningConfiguration: { ScanOnPush: true }
+      ImageTagMutability: MUTABLE
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep last 10 untagged-or-non-latest images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+
+  # ===== Logs =====
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/flyway-migration
+      RetentionInDays: !Ref LogRetentionDays
+
+  # ===== ECS Cluster =====
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: migration-runner
+
+  # ===== IAM: Task Execution Role =====
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ecs-migration-task-execution-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: read-db-secret
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  Fn::ImportValue: !Sub "${NetworkStackName}-DBSecretArn"
+
+  # ===== IAM: Flyway Task Role (空) =====
+  FlywayTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ecs-migration-flyway-task-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+
+  # ===== IAM: GitHub OIDC Provider (条件付き) =====
+  OIDCProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: ShouldCreateOIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+      # GitHub の OIDC は thumbprint 検証を AWS 側で自動処理するが、
+      # 後方互換のため公式 thumbprint を一応設定 (実質は無視される)
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+
+  # ===== IAM: GitHub Actions Role =====
+  GitHubActionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ecs-migration-github-actions-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com"
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                "token.actions.githubusercontent.com:aud": sts.amazonaws.com
+              StringLike:
+                "token.actions.githubusercontent.com:sub": !Sub "repo:${GitHubOrg}/${GitHubRepo}:*"
+      Policies:
+        - PolicyName: ecr-push-and-ecs-run-task
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # ECR トークン取得は Resource:* 必須
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              # ECR 個別操作
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:PutImage
+                  - ecr:BatchGetImage
+                Resource: !GetAtt ECRRepository.Arn
+              # ECS RunTask + DescribeTasks (タスク定義 ARN にスコープ)
+              - Effect: Allow
+                Action:
+                  - ecs:RunTask
+                  - ecs:DescribeTasks
+                Resource: "*"
+                Condition:
+                  ArnEquals:
+                    "ecs:cluster": !GetAtt ECSCluster.Arn
+              # iam:PassRole は対象ロール ARN を明示
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource:
+                  - !GetAtt TaskExecutionRole.Arn
+                  - !GetAtt FlywayTaskRole.Arn
+              # CloudWatch Logs 読み取り (Actions 側で tail)
+              - Effect: Allow
+                Action:
+                  - logs:GetLogEvents
+                  - logs:DescribeLogStreams
+                Resource:
+                  - !GetAtt LogGroup.Arn
+                  - !Sub "${LogGroup.Arn}:log-stream:*"
+
+  # ===== ECS Task Definition =====
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: flyway-migration
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      Cpu: !Ref TaskCpu
+      Memory: !Ref TaskMemory
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt FlywayTaskRole.Arn
+      RuntimePlatform:
+        CpuArchitecture: X86_64
+        OperatingSystemFamily: LINUX
+      ContainerDefinitions:
+        - Name: flyway
+          Image: !Sub "${ECRRepository.RepositoryUri}:latest"
+          Essential: true
+          Command: ["migrate"]
+          Environment:
+            - Name: FLYWAY_URL
+              Value: !Sub
+                - "jdbc:postgresql://${ep}:${port}/${name}"
+                - ep:   !ImportValue
+                        Fn::Sub: "${NetworkStackName}-DBEndpoint"
+                  port: !ImportValue
+                        Fn::Sub: "${NetworkStackName}-DBPort"
+                  name: !ImportValue
+                        Fn::Sub: "${NetworkStackName}-DBName"
+            - Name: FLYWAY_LOCATIONS
+              Value: filesystem:/flyway/sql
+            - Name: FLYWAY_CONNECT_RETRIES
+              Value: "10"
+          Secrets:
+            - Name: FLYWAY_USER
+              ValueFrom: !Sub
+                - "${arn}:username::"
+                - arn: !ImportValue
+                       Fn::Sub: "${NetworkStackName}-DBSecretArn"
+            - Name: FLYWAY_PASSWORD
+              ValueFrom: !Sub
+                - "${arn}:password::"
+                - arn: !ImportValue
+                       Fn::Sub: "${NetworkStackName}-DBSecretArn"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: flyway
+
+Outputs:
+  ECRRepositoryUri:
+    Value: !GetAtt ECRRepository.RepositoryUri
+    Export: { Name: !Sub "${AWS::StackName}-ECRRepositoryUri" }
+  ClusterName:
+    Value: !Ref ECSCluster
+    Export: { Name: !Sub "${AWS::StackName}-ClusterName" }
+  TaskDefinitionArn:
+    Value: !Ref TaskDefinition
+    Export: { Name: !Sub "${AWS::StackName}-TaskDefinitionArn" }
+  GitHubActionsRoleArn:
+    Value: !GetAtt GitHubActionsRole.Arn
+    Export: { Name: !Sub "${AWS::StackName}-GitHubActionsRoleArn" }
+  LogGroupName:
+    Value: !Ref LogGroup
+    Export: { Name: !Sub "${AWS::StackName}-LogGroupName" }

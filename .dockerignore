@@ -1,0 +1,9 @@
+# Build context は migrations/sql/ と docker/ だけで十分
+.git
+.github
+.steering
+docs
+infra
+README.md
+*.md
+.DS_Store

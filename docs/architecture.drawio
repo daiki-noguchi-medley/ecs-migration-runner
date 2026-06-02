@@ -1,0 +1,121 @@
+<mxfile host="app.diagrams.net" type="device">
+  <diagram name="ECS マイグレーション基盤" id="ecs-migration-runner">
+    <mxGraphModel dx="1700" dy="1100" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="ECS Fargate 単発タスクで RDS マイグレーションを実行する基盤" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1;fontColor=#232F3E;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="1200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="gh-group" value="GitHub" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#24292E;fontSize=14;fontStyle=1;verticalAlign=top;align=left;spacingLeft=12;spacingTop=8;container=1;collapsible=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="360" height="780" as="geometry" />
+        </mxCell>
+        <mxCell id="gh-developer" value="開発者" style="shape=actor;html=1;fontSize=12;fillColor=#ffffff;strokeColor=#24292E;verticalLabelPosition=bottom;verticalAlign=top;labelPosition=center;align=center;" vertex="1" parent="gh-group">
+          <mxGeometry x="160" y="40" width="40" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="gh-repo" value="リポジトリ&#xa;ecs-migration-runner&#xa;migrations/sql, Dockerfile" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#24292E;fontSize=12;" vertex="1" parent="gh-group">
+          <mxGeometry x="50" y="180" width="260" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="gh-actions" value="GitHub Actions ワークフロー&#xa;.github/workflows/migrate.yml&#xa;(ubuntu-latest ランナー)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2188FF;strokeColor=#0366D6;fontColor=#ffffff;fontSize=12;fontStyle=1;" vertex="1" parent="gh-group">
+          <mxGeometry x="50" y="340" width="260" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="gh-steps" value="処理ステップ:&#xa;1. ソース取得 (checkout)&#xa;2. AWS 認証 (OIDC でロール引き受け)&#xa;3. ECR にログイン&#xa;4. Docker イメージのビルドとプッシュ&#xa;5. ECS タスクを単発起動 (run-task)&#xa;6. タスク完了を待機&#xa;7. CloudWatch Logs を取得して出力" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#959DA5;fontSize=11;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;" vertex="1" parent="gh-group">
+          <mxGeometry x="30" y="490" width="300" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="aws-cloud" value="AWS クラウド (ap-northeast-1 / 東京リージョン)" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=13;fontStyle=1;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_aws_cloud_alt;strokeColor=#232F3E;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#232F3E;dashed=0;" vertex="1" parent="1">
+          <mxGeometry x="460" y="80" width="1280" height="1050" as="geometry" />
+        </mxCell>
+        <mxCell id="iam-group" value="IAM (認証・認可)" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;fontStyle=0;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_security_group;strokeColor=#C7131F;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#C7131F;dashed=1;" vertex="1" parent="aws-cloud">
+          <mxGeometry x="40" y="60" width="800" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="oidc" value="OIDC プロバイダ&#xa;token.actions.githubusercontent.com" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#DD344C;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.identity_and_access_management_iam;" vertex="1" parent="iam-group">
+          <mxGeometry x="40" y="60" width="60" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="role-gha" value="GitHubActionsRole&#xa;短期トークンで&#xa;引き受け" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#DD344C;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.role;" vertex="1" parent="iam-group">
+          <mxGeometry x="260" y="60" width="60" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="role-exec" value="TaskExecutionRole&#xa;タスク起動用" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#DD344C;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.role;" vertex="1" parent="iam-group">
+          <mxGeometry x="480" y="60" width="60" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="role-task" value="FlywayTaskRole&#xa;コンテナ内部用" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#DD344C;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.role;" vertex="1" parent="iam-group">
+          <mxGeometry x="680" y="60" width="60" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="vpc-group" value="VPC (仮想プライベートクラウド) &#xa;10.0.0.0/16" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;fontStyle=0;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_vpc;strokeColor=#248814;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#248814;dashed=0;" vertex="1" parent="aws-cloud">
+          <mxGeometry x="40" y="320" width="820" height="700" as="geometry" />
+        </mxCell>
+        <mxCell id="public-subnet" value="パブリックサブネット  10.0.0.0/24  (AZ-a)" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=11;fontStyle=0;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_public_subnet;strokeColor=#248814;fillColor=none;verticalAlign=top;align=left;spacingLeft=24;fontColor=#248814;dashed=0;" vertex="1" parent="vpc-group">
+          <mxGeometry x="40" y="50" width="740" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="igw" value="インターネット&#xa;ゲートウェイ" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#8C4FFF;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.internet_gateway;" vertex="1" parent="public-subnet">
+          <mxGeometry x="120" y="60" width="60" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="nat" value="NAT ゲートウェイ&#xa;(外向き通信を中継)" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#8C4FFF;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.nat_gateway;" vertex="1" parent="public-subnet">
+          <mxGeometry x="460" y="60" width="60" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="private-a" value="プライベートサブネット  10.0.10.0/24  (AZ-a)  &#xa;マイグレーション実行" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=11;fontStyle=0;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_private_subnet;strokeColor=#147EBA;fillColor=none;verticalAlign=top;align=left;spacingLeft=24;fontColor=#147EBA;dashed=0;" vertex="1" parent="vpc-group">
+          <mxGeometry x="40" y="250" width="360" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="ecs-cluster-icon" value="ECS クラスタ&#xa;migration-runner" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#ED7100;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.elastic_container_service;" vertex="1" parent="private-a">
+          <mxGeometry x="40" y="70" width="60" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="fargate-task" value="Fargate タスク&#xa;Flyway (単発起動)&#xa;0.25 vCPU / 512 MB" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#ED7100;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.fargate;" vertex="1" parent="private-a">
+          <mxGeometry x="240" y="70" width="60" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="private-b" value="プライベートサブネット  10.0.11.0/24  (AZ-b)  &#xa;DB サブネットグループ" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=11;fontStyle=0;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_private_subnet;strokeColor=#147EBA;fillColor=none;verticalAlign=top;align=left;spacingLeft=24;fontColor=#147EBA;dashed=0;" vertex="1" parent="vpc-group">
+          <mxGeometry x="420" y="250" width="360" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="rds" value="RDS PostgreSQL 16&#xa;db.t4g.micro&#xa;単一 AZ 構成" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#C925D1;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.rds;" vertex="1" parent="private-b">
+          <mxGeometry x="150" y="70" width="60" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="sg-note" value="セキュリティグループ ルール&#xa;・ECS タスク用 SG → アウトバウンド全許可&#xa;・RDS 用 SG ← ECS タスク用 SG から 5432 番のみ許可" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF7E6;strokeColor=#D48806;fontSize=10;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;dashed=1;" vertex="1" parent="vpc-group">
+          <mxGeometry x="40" y="540" width="400" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="ecr" value="ECR&#xa;(コンテナイメージ保管)&#xa;flyway-migration" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#ED7100;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.elastic_container_registry;" vertex="1" parent="aws-cloud">
+          <mxGeometry x="1040" y="120" width="60" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="sm" value="Secrets Manager&#xa;(RDS 認証情報を&#xa;自動生成・保管)" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#DD344C;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.secrets_manager;" vertex="1" parent="aws-cloud">
+          <mxGeometry x="1040" y="380" width="60" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="cwl" value="CloudWatch Logs&#xa;(実行ログ保管)&#xa;/ecs/flyway-migration" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#E7157B;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.cloudwatch_2;" vertex="1" parent="aws-cloud">
+          <mxGeometry x="1040" y="640" width="60" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" value="git push (main)" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;strokeColor=#24292E;fontSize=11;fontColor=#24292E;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="gh-developer" target="gh-repo">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" value="ワークフロー起動" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;strokeColor=#24292E;fontSize=11;fontColor=#24292E;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="gh-repo" target="gh-actions">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" value="① OIDC トークン要求&#xa;WebIdentity でロール引き受け" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;strokeColor=#0366D6;fontSize=11;fontColor=#0366D6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="gh-actions" target="oidc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" value="信頼関係" style="endArrow=classic;html=1;rounded=0;strokeColor=#0366D6;fontSize=10;fontColor=#0366D6;dashed=1;" edge="1" parent="1" source="oidc" target="role-gha">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="② Docker イメージをプッシュ" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;strokeColor=#F58536;fontSize=11;fontColor=#F58536;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="role-gha" target="ecr">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" value="③ タスクを単発起動&#xa;run-task / PassRole" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;strokeColor=#F58536;fontSize=11;fontColor=#F58536;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="role-gha" target="ecs-cluster-icon">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e11" value="④ ログ取得 (tail)&#xa;ジョブログに出力" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;strokeColor=#E7157B;fontSize=11;fontColor=#E7157B;exitX=1;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="gh-actions" target="cwl">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" value="DB 接続 (5432 番)&#xa;Flyway がマイグレーション適用" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;strokeColor=#3334B9;strokeWidth=2;fontSize=11;fontColor=#3334B9;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="fargate-task" target="rds">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" value="イメージ取得&#xa;(NAT 経由)" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;strokeColor=#F58536;fontSize=10;fontColor=#F58536;dashed=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="fargate-task" target="ecr">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" value="シークレット取得&#xa;DB 認証情報を注入 (NAT 経由)" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;strokeColor=#DD344C;fontSize=10;fontColor=#DD344C;dashed=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="fargate-task" target="sm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" value="標準出力をログ転送&#xa;awslogs ドライバ" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;strokeColor=#E7157B;fontSize=10;fontColor=#E7157B;dashed=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="fargate-task" target="cwl">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="legend" value="凡例&#xa;━ 実線: AWS API 呼び出し / 同期通信&#xa;┄ 破線: タスク内部からの呼び出し / 信頼関係&#xa;① ② ③ ④: GitHub Actions の実行順序" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#8C8C8C;fontSize=11;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="900" width="360" height="100" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

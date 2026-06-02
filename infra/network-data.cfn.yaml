@@ -1,0 +1,235 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  ECS migration runner - network and data layer.
+  VPC + Subnets + NAT + Security Groups + RDS PostgreSQL + Secrets Manager.
+
+Parameters:
+  DBName:
+    Type: String
+    Default: appdb
+    Description: 初期データベース名
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9_]*"
+  DBUsername:
+    Type: String
+    Default: appuser
+    Description: マスターユーザー名 (パスワードは Secrets Manager で自動生成)
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9_]*"
+  DBInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+    AllowedValues: [db.t4g.micro, db.t4g.small, db.t4g.medium]
+    Description: RDS インスタンスクラス (最小はコスト最適化用)
+  DBAllocatedStorage:
+    Type: Number
+    Default: 20
+    MinValue: 20
+    MaxValue: 100
+    Description: ストレージサイズ (GB)
+  PostgresVersion:
+    Type: String
+    Default: "16.14"
+    Description: PostgreSQL エンジンバージョン (ap-northeast-1 で利用可能な最新の 16 系)
+
+Resources:
+  # ===== VPC =====
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-vpc" }
+
+  IGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-igw" }
+
+  AttachIGW:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref IGW
+
+  # ===== Subnets =====
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.0.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-public-a" }
+
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.10.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-private-a" }
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.11.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-private-b" }
+
+  # ===== NAT =====
+  NatEip:
+    Type: AWS::EC2::EIP
+    DependsOn: AttachIGW
+    Properties:
+      Domain: vpc
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-nat-eip" }
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEip.AllocationId
+      SubnetId: !Ref PublicSubnetA
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-nat" }
+
+  # ===== Route Tables =====
+  PublicRT:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-rt-public" }
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachIGW
+    Properties:
+      RouteTableId: !Ref PublicRT
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref IGW
+
+  AssocPublicA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRT
+      SubnetId: !Ref PublicSubnetA
+
+  PrivateRT:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-rt-private" }
+
+  PrivateDefaultRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRT
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  AssocPrivateA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRT
+      SubnetId: !Ref PrivateSubnetA
+
+  AssocPrivateB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRT
+      SubnetId: !Ref PrivateSubnetB
+
+  # ===== Security Groups =====
+  ECSTaskSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ECS Fargate task SG (Flyway). Outbound only.
+      VpcId: !Ref VPC
+      SecurityGroupEgress:
+        - { IpProtocol: -1, CidrIp: 0.0.0.0/0, Description: "All outbound" }
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-sg-ecs-task" }
+
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RDS PostgreSQL SG. Inbound 5432 from ECS task SG only.
+      VpcId: !Ref VPC
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-sg-rds" }
+
+  RDSIngressFromECS:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref RDSSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !Ref ECSTaskSG
+      Description: PostgreSQL from ECS task
+
+  # ===== RDS =====
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Private subnets for RDS
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      Engine: postgres
+      EngineVersion: !Ref PostgresVersion
+      DBInstanceClass: !Ref DBInstanceClass
+      AllocatedStorage: !Ref DBAllocatedStorage
+      StorageType: gp3
+      DBName: !Ref DBName
+      MasterUsername: !Ref DBUsername
+      ManageMasterUserPassword: true
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups: [!Ref RDSSecurityGroup]
+      PubliclyAccessible: false
+      MultiAZ: false
+      BackupRetentionPeriod: 7
+      DeletionProtection: false
+      EnablePerformanceInsights: false
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-rds" }
+
+Outputs:
+  VpcId:
+    Value: !Ref VPC
+    Export: { Name: !Sub "${AWS::StackName}-VpcId" }
+  PrivateSubnetAId:
+    Value: !Ref PrivateSubnetA
+    Export: { Name: !Sub "${AWS::StackName}-PrivateSubnetAId" }
+  PrivateSubnetBId:
+    Value: !Ref PrivateSubnetB
+    Export: { Name: !Sub "${AWS::StackName}-PrivateSubnetBId" }
+  ECSTaskSGId:
+    Value: !Ref ECSTaskSG
+    Export: { Name: !Sub "${AWS::StackName}-ECSTaskSGId" }
+  DBSecretArn:
+    Value: !GetAtt DBInstance.MasterUserSecret.SecretArn
+    Export: { Name: !Sub "${AWS::StackName}-DBSecretArn" }
+  DBEndpoint:
+    Value: !GetAtt DBInstance.Endpoint.Address
+    Export: { Name: !Sub "${AWS::StackName}-DBEndpoint" }
+  DBPort:
+    Value: !GetAtt DBInstance.Endpoint.Port
+    Export: { Name: !Sub "${AWS::StackName}-DBPort" }
+  DBName:
+    Value: !Ref DBName
+    Export: { Name: !Sub "${AWS::StackName}-DBName" }
