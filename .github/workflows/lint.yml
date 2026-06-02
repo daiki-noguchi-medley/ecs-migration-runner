@@ -1,0 +1,43 @@
+name: SQL Lint & Format Check
+
+on:
+  pull_request:
+    paths:
+      - "migrations/sql/**"
+      - ".github/workflows/lint.yml"
+      - "spotless.gradle.kts"
+  push:
+    branches: [main]
+    paths:
+      - "migrations/sql/**"
+      - ".github/workflows/lint.yml"
+      - "spotless.gradle.kts"
+
+jobs:
+  spotless:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f69c369afd9a36eb57a0d5c566dc4970
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@5896cecc08402ac2b6b52a8e3a73e1b1d6b8e216
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: gradle
+
+      - name: Run Spotless Check
+        run: gradle spotlessCheck
+
+      - name: Comment on PR if format issues found
+        if: failure()
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '❌ **SQL Format Check Failed**\n\nRun `make spotless-fix` locally to auto-format SQL files.'
+            })

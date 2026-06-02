@@ -158,6 +158,21 @@ gh run watch
 ### 必要なもの
 - Docker Desktop (Apple Silicon / Intel どちらでも可)
 - GNU make (macOS / Linux 標準)
+- VSCode + Dev Container 拡張機能（オプション、Gradle 環境が必要な場合）
+
+### Dev Container（推奨）
+
+VSCode で `.devcontainer/` を使用すると、Java + Gradle をローカルにインストールせず、Docker コンテナ内で開発できます。
+
+```bash
+# VSCode で "Dev Containers: Open Folder in Container" コマンドを実行
+# または Remote - Containers 拡張機能から開く
+```
+
+**利点**:
+- Java / Gradle がローカル不要
+- VSCode の Gradle プラグインが Docker 内で動作
+- CI/CD と同じ環境で検証可能
 
 ### クイックスタート
 
@@ -183,6 +198,8 @@ make reset     # 完全初期化 (data volume も削除)
 | `make down` | 停止 (data volume 維持) |
 | `make reset` | 停止 + data volume 削除 (DB 初期化) |
 | `make build` | 本番用 `docker/Dockerfile` を `linux/amd64` で build 確認 |
+| `make spotless-check` | SQL ファイルのフォーマット・Lint チェック |
+| `make spotless-fix` | SQL ファイルを自動フォーマット |
 
 ### ローカル起動シーケンス
 
@@ -233,14 +250,34 @@ sequenceDiagram
 ```
 .
 ├── docs/                  ── 永続ドキュメント
-├── .steering/             ── 作業単位の計画・追跡
 ├── infra/                 ── CloudFormation (network-data / app) + teardown.sh
 ├── migrations/sql/        ── Flyway SQL (V<n>__<name>.sql, 追記のみ)
 ├── docker/                ── 本番用 Flyway イメージ定義 (ECR push 用)
+├── .devcontainer/         ── VSCode Dev Container 設定 (Java + Gradle)
 ├── docker-compose.yml     ── ローカル用 (PG + Flyway)
+├── spotless.gradle.kts    ── Spotless SQL フォーマット設定
 ├── Makefile               ── ローカル用ショートカット (make help)
-└── .github/workflows/     ── migrate (workflow_dispatch) / create_git_tag (auto tag)
+└── .github/workflows/     ── migrate / create_git_tag / lint (GitHub Actions)
 ```
+
+## SQL フォーマット・Lint ルール（Spotless）
+
+Spotless を使用して、SQL ファイルのフォーマットを統一・検証します。
+
+```bash
+# ローカルでチェック
+make spotless-check
+
+# 自動修正
+make spotless-fix
+```
+
+**ルール**:
+- インデント: タブ (2 スペース相当)
+- フォーマッター: DBeaver SQL フォーマッター
+- 末尾: 改行で終了
+
+PR 時に GitHub Actions (`lint.yml`) が自動実行され、フォーマット違反があるとコメントされます。
 
 ## マイグレーション運用ルール
 
@@ -248,6 +285,7 @@ sequenceDiagram
 - **既存ファイルの編集は禁止** (Flyway の checksum と不一致になる)
 - ロールバックは「打ち消し migration を追加」で行う (OSS Flyway は undo 非対応)
 - テーブル名は **単数形** (`user`, `post`)、複数件を表すコードは `~List` サフィックス (CLAUDE.md 規約)
+- **SQL フォーマット**: `make spotless-fix` で統一（PR 前に実行推奨）
 
 ## トラブルシュート
 

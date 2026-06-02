@@ -3,7 +3,7 @@
 # `make` だけで利用可能なターゲット一覧が出る。
 # `make help` でも同じ。
 
-.PHONY: help up migrate down reset info validate clean psql logs status build
+.PHONY: help up migrate down reset info validate clean psql logs status build spotless-check spotless-fix
 
 .DEFAULT_GOAL := help
 
@@ -60,3 +60,11 @@ build: ## docker/Dockerfile で本番用イメージを linux/amd64 で build (p
 	  -f docker/Dockerfile \
 	  -t flyway-migration:local-amd64 \
 	  --load .
+
+# -------- Spotless (SQL フォーマット・Lint) --------
+
+spotless-check: ## SQL ファイルのフォーマット・Lint チェック (修正しない)
+	gradle spotlessCheck
+
+spotless-fix: ## SQL ファイルを自動フォーマット
+	gradle spotlessApply

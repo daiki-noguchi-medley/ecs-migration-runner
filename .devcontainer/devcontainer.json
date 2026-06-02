@@ -1,0 +1,33 @@
+{
+  "name": "ECS Migration Runner",
+  "image": "gradle:8.7-jdk21",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-from-docker:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "gradle.gradle-for-java",
+        "ms-vscode.extension-pack-for-java",
+        "foxundermoon.shell-format",
+        "PKief.material-icon-theme"
+      ],
+      "settings": {
+        "[java]": {
+          "editor.defaultFormatter": "redhat.java",
+          "editor.formatOnSave": true
+        },
+        "gradle.nestedProjects": true
+      }
+    }
+  },
+  "postCreateCommand": "gradle --version && echo 'Dev Container ready!'",
+  "remoteUser": "root",
+  "forwardPorts": [5432],
+  "portsAttributes": {
+    "5432": {
+      "label": "PostgreSQL",
+      "onAutoForward": "notify"
+    }
+  }
+}
