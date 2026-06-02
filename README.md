@@ -153,47 +153,85 @@ gh run watch
 
 ## ローカル開発
 
-`docker-compose.yml` でローカルに **PostgreSQL + Flyway** を立ち上げて、`migrations/sql/` の SQL をその場で試せる。`Makefile` でコマンドをショートカット化。
+ローカル開発には **2 つのモード** があります。どちらでも動作確認できます。
 
 ### 必要なもの
-- Docker Desktop (Apple Silicon / Intel どちらでも可)
-- GNU make (macOS / Linux 標準)
-- VSCode + Dev Container 拡張機能（オプション、Gradle 環境が必要な場合）
 
-### Dev Container（推奨）
+| 項目 | macOS | Windows | Linux |
+|-----|-------|---------|-------|
+| Docker Desktop | ✅ | ✅ | Docker CE |
+| make | ✅ (標準) | ⚠️ WSL2 推奨 | ✅ (標準) |
+| VSCode | オプション | オプション | オプション |
 
-VSCode で `.devcontainer/` を使用すると、Java + Gradle + PostgreSQL + Flyway を完全に統合した開発環境がセットアップされます。ローカルには Docker Desktop のみ必要です。
+**Windows での make コマンド:**
+- **推奨**: WSL2 + Ubuntu で実行
+- または Git Bash（`make` をインストール）
+- または `docker compose` コマンド直接実行
 
-#### セットアップ
+#### 環境自動判定
+
+Makefile が OS を自動判定します：
 
 ```bash
-# VSCode で "Dev Containers: Open Folder in Container" コマンドを実行
-# または Remote - Containers 拡張機能から開く
+make os-check  # 検出環境を表示
 ```
 
-#### 開発フロー（Dev Container 内）
+### モード A: ローカル Compose（シンプル）
+
+`docker-compose.yml` を使用。PostgreSQL + Flyway のみで、Gradle はローカル環境に依存。
 
 ```bash
-# PostgreSQL + Flyway が自動起動されます
+make up                # PostgreSQL + Flyway 起動
+make spotless-fix      # SQL フォーマット（ローカル Gradle があれば）
+make psql              # DB 接続
+make down              # コンテナ停止
+```
+
+**利点**: シンプル、低リソース  
+**欠点**: Gradle のインストール必要（Windows では手間）
+
+---
+
+### モード B: Dev Container（推奨・クロスプラットフォーム）
+
+VSCode で `.devcontainer/` を使用。Java + Gradle + PostgreSQL + Flyway を完全統合。
+
+```bash
+# VSCode で以下のいずれかを実行
+make devcontainer-up        # Dev Container を開く（推奨）
+# または手動で "Dev Containers: Open Folder in Container" コマンド実行
+```
+
+#### Dev Container 内での開発フロー
+
+```bash
+# PostgreSQL + Flyway が自動起動されます（初回は数十秒待機）
 
 # SQL をフォーマット
-make spotless-fix
+make gradle-fix              # Dev Container 内で Spotless Apply
 
-# DB の現在状態を確認
-make info
-make psql
+# DB の状態確認
+make info                    # マイグレーション一覧
+make psql                    # psql で接続
 
-# DB に接続して検証
+# テーブル確認
 make psql
-# psql> \dt でテーブル確認
+# psql> \dt
+# psql> SELECT * FROM "user";
+# psql> \q
 ```
 
-**利点**:
+**利点（モード B）**:
 - ✅ ローカルは Docker Desktop のみ（Java / Gradle / PostgreSQL 不要）
+- ✅ Mac / Windows / Linux で 100% 同じ環境
 - ✅ VSCode の Gradle プラグインが Docker 内で動作
 - ✅ PostgreSQL + Flyway が自動で同時起動
-- ✅ CI/CD と同じ環境で検証可能
-- ✅ チーム間で同じ環境を共有（`.devcontainer/` で再現性 100%）
+- ✅ CI/CD と同じ環境で開発・検証可能
+- ✅ チーム全員が同じ `.devcontainer/` で再現性 100%
+
+**選択基準**:
+- Windows ユーザー → **モード B 推奨**（Gradle インストール不要）
+- Mac / Linux → **どちらでも OK**（好みで選択）
 
 ### クイックスタート
 
@@ -206,9 +244,15 @@ make reset     # 完全初期化 (data volume も削除)
 
 ### Makefile ターゲット一覧
 
+#### 環境確認
 | ターゲット | 内容 |
 |---|---|
-| `make` / `make help` | ターゲット一覧を表示 |
+| `make help` | ターゲット一覧を表示 |
+| `make os-check` | 検出環境（OS、Docker、make）を表示 |
+
+#### モード A: ローカル Compose
+| ターゲット | 内容 |
+|---|---|
 | `make up` (= `make migrate`) | DB 起動 + Flyway migrate |
 | `make info` | 適用済み migration 一覧 |
 | `make validate` | SQL の構文 + checksum 検証 |
@@ -218,9 +262,27 @@ make reset     # 完全初期化 (data volume も削除)
 | `make status` | コンテナ / volume の状態 |
 | `make down` | 停止 (data volume 維持) |
 | `make reset` | 停止 + data volume 削除 (DB 初期化) |
-| `make build` | 本番用 `docker/Dockerfile` を `linux/amd64` で build 確認 |
-| `make spotless-check` | SQL ファイルのフォーマット・Lint チェック |
-| `make spotless-fix` | SQL ファイルを自動フォーマット |
+| `make spotless-check` | SQL フォーマット検証（ローカル Gradle） |
+| `make spotless-fix` | SQL 自動フォーマット（ローカル Gradle） |
+
+#### モード B: Dev Container
+| ターゲット | 内容 |
+|---|---|
+| `make devcontainer-up` | Dev Container を VSCode で起動 |
+| `make devcontainer-stop` | Dev Container を停止 |
+| `make devcontainer-logs` | Dev Container のログを表示 |
+| `make devcontainer-shell` | Dev Container のシェルに入る |
+| `make gradle-check` | Dev Container 内で SQL フォーマット検証 |
+| `make gradle-fix` | Dev Container 内で SQL 自動フォーマット |
+| `make gradle-build` | Dev Container 内で Gradle ビルド |
+| `make gradle-clean` | Dev Container 内で Gradle クリーン |
+
+#### その他
+| ターゲット | 内容 |
+|---|---|
+| `make build` | 本番用 `docker/Dockerfile` を `linux/amd64` で build |
+| `make clean-gradle-cache` | Gradle キャッシュ削除 |
+| `make docker-prune` | Docker ダングリング削除 |
 
 ### ローカル起動シーケンス
 
