@@ -162,17 +162,38 @@ gh run watch
 
 ### Dev Container（推奨）
 
-VSCode で `.devcontainer/` を使用すると、Java + Gradle をローカルにインストールせず、Docker コンテナ内で開発できます。
+VSCode で `.devcontainer/` を使用すると、Java + Gradle + PostgreSQL + Flyway を完全に統合した開発環境がセットアップされます。ローカルには Docker Desktop のみ必要です。
+
+#### セットアップ
 
 ```bash
 # VSCode で "Dev Containers: Open Folder in Container" コマンドを実行
 # または Remote - Containers 拡張機能から開く
 ```
 
+#### 開発フロー（Dev Container 内）
+
+```bash
+# PostgreSQL + Flyway が自動起動されます
+
+# SQL をフォーマット
+make spotless-fix
+
+# DB の現在状態を確認
+make info
+make psql
+
+# DB に接続して検証
+make psql
+# psql> \dt でテーブル確認
+```
+
 **利点**:
-- Java / Gradle がローカル不要
-- VSCode の Gradle プラグインが Docker 内で動作
-- CI/CD と同じ環境で検証可能
+- ✅ ローカルは Docker Desktop のみ（Java / Gradle / PostgreSQL 不要）
+- ✅ VSCode の Gradle プラグインが Docker 内で動作
+- ✅ PostgreSQL + Flyway が自動で同時起動
+- ✅ CI/CD と同じ環境で検証可能
+- ✅ チーム間で同じ環境を共有（`.devcontainer/` で再現性 100%）
 
 ### クイックスタート
 

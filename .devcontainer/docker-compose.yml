@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+  gradle:
+    image: gradle:8.7-jdk21
+    volumes:
+      - ..:/workspace
+      - gradle_cache:/root/.gradle
+    working_dir: /workspace
+    command: sleep infinity
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: appdb
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: localpass
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: localpass
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "appuser", "-d", "appdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  flyway:
+    image: flyway/flyway:10-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      FLYWAY_URL: jdbc:postgresql://db:5432/appdb
+      FLYWAY_USER: appuser
+      FLYWAY_PASSWORD: localpass
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+    volumes:
+      - ../migrations/sql:/flyway/sql:ro
+    command: migrate
+
+volumes:
+  postgres_data:
+  gradle_cache:

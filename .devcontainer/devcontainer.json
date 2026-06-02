@@ -1,6 +1,9 @@
 {
   "name": "ECS Migration Runner",
   "image": "gradle:8.7-jdk21",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "gradle",
+  "workspaceFolder": "/workspace",
   "features": {
     "ghcr.io/devcontainers/features/docker-from-docker:1": {}
   },
@@ -10,7 +13,8 @@
         "gradle.gradle-for-java",
         "ms-vscode.extension-pack-for-java",
         "foxundermoon.shell-format",
-        "PKief.material-icon-theme"
+        "PKief.material-icon-theme",
+        "ms-vscode.makefile-tools"
       ],
       "settings": {
         "[java]": {
@@ -22,6 +26,7 @@
     }
   },
   "postCreateCommand": "gradle --version && echo 'Dev Container ready!'",
+  "postStartCommand": "echo 'PostgreSQL running at localhost:5432'",
   "remoteUser": "root",
   "forwardPorts": [5432],
   "portsAttributes": {
@@ -29,5 +34,8 @@
       "label": "PostgreSQL",
       "onAutoForward": "notify"
     }
-  }
+  },
+  "mounts": [
+    "source=${localEnv:HOME}/.ssh,target=/root/.ssh,readonly"
+  ]
 }
