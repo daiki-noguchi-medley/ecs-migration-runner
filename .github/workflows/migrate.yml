@@ -52,7 +52,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout (起動時に選択された ref を使用)
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+        uses: actions/checkout@v4
         # ref を省略すると github.ref (= "Use workflow from" で選んだ tag/branch) が使われる
 
       - name: 起動 ref を表示
@@ -89,7 +89,7 @@ jobs:
           echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502  # v4.0.2
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -97,13 +97,13 @@ jobs:
 
       - name: Login to Amazon ECR
         id: ecr
-        uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076  # v2.0.1
+        uses: aws-actions/amazon-ecr-login@v2
 
       - name: Set up Docker Buildx (GHA cache 使用)
-        uses: docker/setup-buildx-action@d70bba72b1f3fd22344832f00baa16ece964efeb  # v3.3.0
+        uses: docker/setup-buildx-action@v3
 
       - name: Build & push image (git ref に対応するタグで push)
-        uses: docker/build-push-action@5176d81f87c23d6fc96624dfdbcd9f3830bbe445  # v6.5.0
+        uses: docker/build-push-action@v5
         with:
           context: .
           file: docker/Dockerfile
