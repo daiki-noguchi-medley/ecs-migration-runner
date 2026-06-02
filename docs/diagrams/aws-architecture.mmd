@@ -1,0 +1,41 @@
+graph TB
+    subgraph local["開発環境（ローカル）"]
+        compose["Docker Compose<br/>PostgreSQL + Flyway"]
+    end
+
+    subgraph github["GitHub"]
+        sql["migrations/sql/<br/>Flyway マイグレーションファイル"]
+        dockerfile["docker/Dockerfile<br/>本番用イメージ定義"]
+    end
+
+    subgraph aws["AWS 本番環境"]
+        subgraph gha["GitHub Actions"]
+            oidc["OIDC Token<br/>AssumeRoleWithWebIdentity"]
+        end
+
+        ecr["Amazon ECR<br/>image"]
+
+        ecs["ECS Fargate<br/>one-shot task"]
+
+        rds["RDS PostgreSQL<br/>flyway_schema_history<br/>user / post / ..."]
+
+        logs["CloudWatch Logs"]
+    end
+
+    compose -->|SQL + Dockerfile| sql
+    compose -->|SQL + Dockerfile| dockerfile
+
+    sql -->|GitHub Actions<br/>OIDC 認証| oidc
+    dockerfile -->|docker build &amp; push| ecr
+
+    ecr -->|image| ecs
+    oidc -->|push| ecr
+
+    ecs -->|Flyway migrate| rds
+    ecs -->|ログ記録| logs
+
+    style local fill:#e1f5ff
+    style github fill:#f5f5f5
+    style aws fill:#fff3e0
+    style ecs fill:#c8e6c9
+    style rds fill:#ffccbc

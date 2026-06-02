@@ -1,0 +1,20 @@
+graph TD
+    A["Flyway 起動"] --> B["DB 接続"]
+    B --> C["flyway_schema_history テーブルを確認"]
+    C --> D["SQL ファイル一覧を読む<br/>V1__init.sql<br/>V2__add_user.sql<br/>V3__add_post.sql ..."]
+    D --> E["実行済み version を DB から読む<br/>SELECT version FROM flyway_schema_history"]
+    E --> F["未実行ファイルを判定"]
+    F -->|既に記録済み| G["SKIP<br/>実行しない"]
+    F -->|未記録| H["apply<br/>実行"]
+    G --> I["checksum で編集を検証"]
+    H --> I
+    I -->|不一致| J["❌ エラー<br/>データ破損を防止"]
+    I -->|一致| K["未実行ファイルを順序通り実行<br/>BEGIN TRANSACTION<br/>実行 SQL<br/>INSERT INTO flyway_schema_history<br/>COMMIT"]
+    K --> L["✅ 完了<br/>exit code 0"]
+    J --> M["⚠️ 修正が必要"]
+
+    style A fill:#e3f2fd
+    style L fill:#c8e6c9
+    style J fill:#ffcdd2
+    style G fill:#fff9c4
+    style H fill:#fff9c4

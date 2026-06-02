@@ -1,0 +1,43 @@
+sequenceDiagram
+    actor Dev as 開発者
+    participant Local as ローカル開発
+    participant GH as GitHub
+    participant GHA as GitHub Actions
+    participant ECR as Amazon ECR
+    participant ECS as ECS Fargate
+    participant RDS as RDS PostgreSQL
+    participant CWL as CloudWatch Logs
+
+    Note over Dev,Local: ① ローカルで SQL 開発
+    Dev->>Local: make up (DB 起動)
+    Local->>Local: PostgreSQL + Flyway 起動
+    Dev->>Local: migrations/sql/V3__... 追加
+    Dev->>Local: make validate (検証)
+
+    Note over Dev,GH: ② GitHub に Push → PR 作成
+    Dev->>GH: git push & gh pr create
+    GHA->>GHA: lint.yml 自動実行<br/>Spotless check
+
+    Note over Dev,GH: ③ main にマージ
+    Dev->>GH: gh pr merge --squash
+    GHA->>GHA: auto-format.yml 自動実行<br/>SQL 自動修正
+    GHA->>GH: 修正結果を自動コミット
+
+    Note over GH,GHA: ④ create_git_tag.yml 自動実行
+    GHA->>GH: v0.x.0 タグ作成
+
+    Note over Dev,ECS: ⑤ GitHub Actions で migrate 実行
+    Dev->>GHA: workflow_dispatch<br/>Use workflow from = v0.x.0
+    GHA->>GHA: OIDC 認証
+
+    GHA->>ECR: docker build & push
+    ECR->>ECR: イメージ保存<br/>:v0.x.0 + :latest
+
+    GHA->>ECS: ECS run-task<br/>Fargate one-shot
+
+    ECS->>RDS: Flyway migrate
+    RDS->>RDS: V1, V2 をスキップ<br/>V3 のみ実行
+
+    ECS->>CWL: ログ記録
+    CWL-->>Dev: ✅ Successfully applied<br/>exit code 0
+

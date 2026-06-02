@@ -1,0 +1,47 @@
+graph LR
+    subgraph state1["DB: empty"]
+        empty["( empty )"]
+    end
+
+    subgraph state2["DB: V1 済み"]
+        v1["user テーブル"]
+    end
+
+    subgraph state3["DB: V2 済み"]
+        v2["user + post テーブル"]
+    end
+
+    make1a["make up"]
+    make1b["make up"]
+    make1c["make up"]
+
+    make2a["make up"]
+    make2b["make up"]
+    make2c["make up"]
+
+    make3a["make up"]
+    make3b["make up"]
+    make3c["make up"]
+
+    empty --> make1a --> v1
+    v1 --> make1b --> v1
+    v1 --> make1c --> v1
+
+    v1 --> make2a --> v2
+    v2 --> make2b --> v2
+    v2 --> make2c --> v2
+
+    state1 --> make3a --> state3
+    state2 --> make3b --> state3
+    state3 --> make3c --> state3
+
+    result["✅ 同じ状態に到達<br/>SQL は 1 回だけ実行<br/>2 回目以降は自動スキップ"]
+
+    v1 -.-> result
+    v2 -.-> result
+    state3 -.-> result
+
+    style empty fill:#e3f2fd
+    style v1 fill:#c8e6c9
+    style v2 fill:#c8e6c9
+    style result fill:#fff9c4

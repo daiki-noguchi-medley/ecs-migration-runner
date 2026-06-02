@@ -1,0 +1,19 @@
+graph TD
+    A["既存 DB<br/>テーブル既存"] --> B["make baseline-init<br/>V1.0 記録"]
+    B --> C["flyway_schema_history に<br/>version=0 Baseline を記録"]
+    C --> D["make up 実行"]
+
+    D --> E{SQL ファイル確認}
+
+    E -->|V1| F["version 0 < 1<br/>既に version 0 が記録<br/>→ SKIP"]
+    E -->|V2| G["version 未記録<br/>→ apply<br/>実行"]
+    E -->|V3| H["version 未記録<br/>→ apply<br/>実行"]
+
+    F --> I["✅ V1 は実行されない<br/>V2, V3 のみ実行"]
+    G --> I
+    H --> I
+
+    style A fill:#fff9c4
+    style B fill:#e3f2fd
+    style I fill:#c8e6c9
+    style F fill:#ffcdd2
